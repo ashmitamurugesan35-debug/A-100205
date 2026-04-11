@@ -163,6 +163,17 @@ export const teamMembers = [
     linkedin: 'https://www.linkedin.com/in/kamlesh',
     skills: ['Big Data & ML', 'Edge AI', 'APIs'],
     contributions: 29,
+    psWallet: {
+      mode: 'Activity Points',
+      isActive: true,
+      points: 4095,
+      groupId: 'A#100205',
+      totalGroupPoints: 50185,
+      myContribution: 4095,
+      contributionShare: 8.2,
+      overallRank: 1135,
+      totalParticipants: 1789,
+    },
   },
   {
     name: 'PRATIBA M',

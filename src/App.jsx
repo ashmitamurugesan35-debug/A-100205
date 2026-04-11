@@ -56,6 +56,18 @@ function memberSlug(name) {
     .replace(/(^-|-$)/g, '')
 }
 
+function truncateText(text, maxLen) {
+  if (!text) {
+    return '-'
+  }
+
+  if (text.length <= maxLen) {
+    return text
+  }
+
+  return `${text.slice(0, maxLen - 3)}...`
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('Overview')
   const [timeLeft, setTimeLeft] = useState(getTimeLeft)
@@ -137,6 +149,60 @@ function App() {
 
     doc.save(`${memberSlug(member.name)}-resume.pdf`)
     setToast('Resume PDF downloaded')
+  }
+
+  const downloadTeamPdf = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+
+    doc.setFontSize(16)
+    doc.text('TEAM NEXUS - Leaders and Members Directory', 10, 12)
+    doc.setFontSize(10)
+    doc.text('Team ID: A#100205', 10, 18)
+
+    const headers = ['Name', 'Role', 'Register No', 'College Email', 'Personal Email', 'GitHub']
+    const colWidths = [44, 30, 30, 58, 58, 58]
+    const startX = 10
+    let y = 24
+
+    doc.setFontSize(9)
+    doc.setFillColor(28, 32, 45)
+    doc.setTextColor(235, 235, 235)
+
+    let x = startX
+    headers.forEach((header, idx) => {
+      doc.rect(x, y - 5, colWidths[idx], 7, 'F')
+      doc.text(header, x + 2, y)
+      x += colWidths[idx]
+    })
+
+    y += 8
+    doc.setTextColor(20, 20, 20)
+
+    teamMembers.forEach((member, rowIndex) => {
+      const row = [
+        truncateText(member.name, 24),
+        truncateText(member.role, 16),
+        truncateText(member.registerNo, 16),
+        truncateText(member.collegeEmail, 34),
+        truncateText(member.personalEmail, 34),
+        truncateText(member.github, 34),
+      ]
+
+      let colX = startX
+      row.forEach((value, idx) => {
+        if (rowIndex % 2 === 0) {
+          doc.setFillColor(245, 248, 255)
+          doc.rect(colX, y - 5, colWidths[idx], 7, 'F')
+        }
+        doc.text(String(value), colX + 2, y)
+        colX += colWidths[idx]
+      })
+
+      y += 7
+    })
+
+    doc.save('team-nexus-directory.pdf')
+    setToast('Team PDF downloaded')
   }
 
   const renderPublicPortfolio = (member) => (
@@ -497,8 +563,16 @@ function App() {
                 <h1 className="font-heading text-lg text-white md:text-2xl">Team Nexus Live Dashboard</h1>
                 <p className="mt-1 text-xs text-zinc-400">Important ongoing team information only</p>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
-                <Activity className="h-3.5 w-3.5" /> Real-time Team View
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={downloadTeamPdf}
+                  className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-200"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download Team PDF
+                </button>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs text-emerald-200">
+                  <Activity className="h-3.5 w-3.5" /> Real-time Team View
+                </div>
               </div>
             </div>
 
