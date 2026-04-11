@@ -70,6 +70,39 @@ function truncateText(text, maxLen) {
   return `${text.slice(0, maxLen - 3)}...`
 }
 
+function compressImageFile(file, maxWidth = 1400, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      const source = reader.result
+      const img = new Image()
+
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(img.width * scale))
+        canvas.height = Math.max(1, Math.round(img.height * scale))
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(source)
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+
+      img.onerror = () => resolve(source)
+      img.src = source
+    }
+
+    reader.onerror = () => reject(new Error('Unable to read image file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('Overview')
   const [timeLeft, setTimeLeft] = useState(getTimeLeft)
@@ -275,12 +308,11 @@ function App() {
     </div>
   )
 
-  const handleAddMemoryPhoto = (eventTitle, file) => {
+  const handleAddMemoryPhoto = async (eventTitle, file) => {
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const base64 = e.target.result
+    try {
+      const base64 = await compressImageFile(file)
       const existingPhotos = uploadedMemories[eventTitle]?.photos || []
       const updated = {
         ...uploadedMemories,
@@ -294,11 +326,13 @@ function App() {
       try {
         localStorage.setItem('uploadedMemories', JSON.stringify(updated))
       } catch {
-        setToast('Photo added for this session, but browser storage is full')
+        setToast('Photo shown now, but storage full. Use smaller image or clear old photos.')
+        return
       }
       setToast(`✅ Photo added for ${eventTitle}`)
+    } catch {
+      setToast('Unable to process image. Try another file.')
     }
-    reader.readAsDataURL(file)
   }
 
   const getEventPhotos = (event) => {
