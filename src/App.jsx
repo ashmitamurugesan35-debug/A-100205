@@ -244,8 +244,8 @@ function App() {
   )
 
   const renderOverview = () => (
-    <section className="grid gap-4 xl:grid-cols-3">
-      <article className="rounded-2xl border border-white/10 bg-[#16161ab8] p-5 backdrop-blur-xl xl:col-span-2">
+    <section className="grid gap-4 xl:grid-cols-4">
+      <article className="rounded-2xl border border-white/10 bg-[#16161ab8] p-5 backdrop-blur-xl xl:col-span-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-heading text-lg text-white">Ongoing Command Snapshot</h2>
           <span className="rounded-full border border-emerald-300/40 bg-emerald-400/15 px-3 py-1 text-xs text-emerald-200">
@@ -281,6 +281,14 @@ function App() {
             ))}
           </div>
         </div>
+      </article>
+
+      <article className="rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-[#16161a] to-[#1a1a1f] p-5 backdrop-blur-xl">
+        <p className="text-xs uppercase tracking-widest text-cyan-300">Average CGPA</p>
+        <p className="mt-3 text-5xl font-bold text-transparent bg-gradient-to-r from-cyan-300 via-violet-300 to-cyan-300 bg-clip-text">
+          8.06
+        </p>
+        <p className="mt-2 text-sm text-zinc-400">Team Performance Metric</p>
       </article>
 
       <article className="rounded-2xl border border-white/10 bg-[#16161ab8] p-5 backdrop-blur-xl">

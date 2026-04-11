@@ -159,8 +159,8 @@ export const teamMembers = [
     registerNo: '7376252IT206',
     collegeEmail: 'kamaleshrs.it25@bitsathy.ac.in',
     personalEmail: 'Kamaleshsamkrish@gmail.com',
-    github: 'https://github.com/kamlesh-edge',
-    linkedin: 'https://www.linkedin.com/in/kamlesh',
+    github: 'https://github.com/kamaleshsamkrish',
+    linkedin: 'https://www.linkedin.com/in/kamalesh-samkrish-337b89269?utm_source=share_via&utm_content=profile&utm_medium=member_ios',
     skills: ['Big Data & ML', 'Edge AI', 'APIs'],
     contributions: 29,
     psWallet: {
