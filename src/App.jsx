@@ -155,7 +155,7 @@ function App() {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
 
     doc.setFontSize(16)
-    doc.text('TEAM NEXUS - Leaders and Members Directory', 10, 12)
+    doc.text('TenX CODERS - Leaders and Members Directory', 10, 12)
     doc.setFontSize(10)
     doc.text('Team ID: A#100205', 10, 18)
 
@@ -530,7 +530,7 @@ function App() {
     <div className="min-h-screen bg-[#0a0a0c] text-zinc-100">
       <div className="mx-auto flex w-full max-w-[1400px] gap-4 p-4 md:p-6">
         <aside className="hidden w-64 shrink-0 rounded-2xl border border-white/10 bg-[#16161ab8] p-4 backdrop-blur-xl md:block">
-          <p className="font-heading text-base text-white">TEAM NEXUS</p>
+          <p className="font-heading text-base text-white">TenX CODERS</p>
           <p className="mt-1 text-[11px] tracking-[0.12em] text-zinc-400">A#100205 COMMAND CENTER</p>
 
           <nav className="mt-5 space-y-2">
@@ -560,7 +560,7 @@ function App() {
           <header className="mb-4 rounded-2xl border border-white/10 bg-[#16161ab8] p-4 backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h1 className="font-heading text-lg text-white md:text-2xl">Team Nexus Live Dashboard</h1>
+                <h1 className="font-heading text-lg text-white md:text-2xl">TenX Coders Live Dashboard</h1>
                 <p className="mt-1 text-xs text-zinc-400">Important ongoing team information only</p>
               </div>
               <div className="flex items-center gap-2">
