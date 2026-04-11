@@ -436,7 +436,7 @@ function App() {
             </div>
             <p className="mt-1 text-xs text-zinc-400">{project.tag}</p>
             <p className="mt-1 text-[11px] text-zinc-500">
-              {project.stage || 'Roadmap'} • {project.owner || 'Unassigned'}
+              {project.stage || 'Roadmap'}
             </p>
           </div>
         ))}
