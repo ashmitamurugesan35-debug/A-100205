@@ -438,14 +438,6 @@ function App() {
             <p className="mt-1 text-[11px] text-zinc-500">
               {project.stage || 'Roadmap'} • {project.owner || 'Unassigned'}
             </p>
-            {!!project.progress && (
-              <div className="mt-2 h-1.5 rounded-full bg-zinc-800">
-                <div
-                  className="h-1.5 rounded-full bg-gradient-to-r from-cyan-300 to-violet-300"
-                  style={{ width: `${project.progress}%` }}
-                />
-              </div>
-            )}
           </div>
         ))}
       </div>
