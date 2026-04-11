@@ -9,12 +9,14 @@ import {
   FolderKanban,
   LayoutDashboard,
   Link2,
+  Plus,
   ShieldAlert,
   Timer,
   Trophy,
   Users,
+  X,
 } from 'lucide-react'
-import { domainMatrix, hackathonVault, projects, teamMembers, vaultAssets } from './teamData'
+import { domainMatrix, hackathonVault, projects, teamMembers } from './teamData'
 
 const sidebarTabs = [
   { key: 'Overview', icon: LayoutDashboard },
@@ -22,7 +24,7 @@ const sidebarTabs = [
   { key: 'Domains', icon: BrainCircuit },
   { key: 'Projects', icon: FolderKanban },
   { key: 'PS Points Wallet', icon: Trophy },
-  { key: 'Team Vault', icon: ShieldAlert },
+  { key: 'Memory Lane', icon: ShieldAlert },
 ]
 
 const countdownTarget = new Date('2026-04-16T09:00:00+05:30').getTime()
@@ -73,7 +75,29 @@ function App() {
   const [timeLeft, setTimeLeft] = useState(getTimeLeft)
   const [showPrivate, setShowPrivate] = useState({})
   const [brokenPhotos, setBrokenPhotos] = useState({})
+  const [brokenMemoryImages, setBrokenMemoryImages] = useState({})
   const [toast, setToast] = useState('')
+  const [uploadedMemories, setUploadedMemories] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('uploadedMemories')) || {}
+    } catch {
+      return {}
+    }
+  })
+  const [customEvents, setCustomEvents] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('customHackathonEvents')) || []
+    } catch {
+      return []
+    }
+  })
+  const [showAddEventForm, setShowAddEventForm] = useState(false)
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    date: '',
+    description: '',
+    award: '',
+  })
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft(getTimeLeft()), 1000)
@@ -88,6 +112,14 @@ function App() {
     const timer = setTimeout(() => setToast(''), 1800)
     return () => clearTimeout(timer)
   }, [toast])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('customHackathonEvents', JSON.stringify(customEvents))
+    } catch {
+      setToast('Unable to save new events in browser storage')
+    }
+  }, [customEvents])
 
   const walletProfiles = useMemo(() => teamMembers.filter((member) => member.psWallet), [])
 
@@ -242,6 +274,106 @@ function App() {
       </div>
     </div>
   )
+
+  const handleAddMemoryPhoto = (eventTitle, file) => {
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const base64 = e.target.result
+      const existingPhotos = uploadedMemories[eventTitle]?.photos || []
+      const updated = {
+        ...uploadedMemories,
+        [eventTitle]: {
+          ...uploadedMemories[eventTitle],
+          photos: [...existingPhotos, base64],
+        },
+      }
+
+      setUploadedMemories(updated)
+      try {
+        localStorage.setItem('uploadedMemories', JSON.stringify(updated))
+      } catch {
+        setToast('Photo added for this session, but browser storage is full')
+      }
+      setToast(`✅ Photo added for ${eventTitle}`)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const getEventPhotos = (event) => {
+    const eventMemory = uploadedMemories[event.title] || {}
+    const defaultPhotos = [event.teamPhoto, event.teamPhoto2]
+      .filter(Boolean)
+      .map((src, index) => ({ src, kind: 'default', index }))
+
+    const legacyPhotos = ['teamPhoto', 'teamPhoto2']
+      .map((key) => eventMemory[key])
+      .filter(Boolean)
+      .map((src, index) => ({ src, kind: 'legacy', index }))
+
+    const uploadedPhotos = (eventMemory.photos || []).map((src, index) => ({
+      src,
+      kind: 'uploaded',
+      index,
+    }))
+
+    return [...defaultPhotos, ...legacyPhotos, ...uploadedPhotos]
+  }
+
+  const handleDeleteMemoryPhoto = (eventTitle, photoMeta) => {
+    const current = uploadedMemories[eventTitle] || {}
+    const updatedEvent = { ...current }
+
+    if (photoMeta.kind === 'uploaded') {
+      const photos = [...(updatedEvent.photos || [])]
+      photos.splice(photoMeta.index, 1)
+      updatedEvent.photos = photos
+    }
+
+    if (photoMeta.kind === 'legacy') {
+      if (photoMeta.index === 0) {
+        delete updatedEvent.teamPhoto
+      }
+      if (photoMeta.index === 1) {
+        delete updatedEvent.teamPhoto2
+      }
+    }
+
+    const nextMemories = {
+      ...uploadedMemories,
+      [eventTitle]: updatedEvent,
+    }
+
+    setUploadedMemories(nextMemories)
+    try {
+      localStorage.setItem('uploadedMemories', JSON.stringify(nextMemories))
+    } catch {
+      setToast('Unable to update browser storage')
+    }
+    setToast('Photo deleted')
+  }
+
+  const memoryLaneEvents = useMemo(() => [...customEvents, ...hackathonVault], [customEvents])
+
+  const handleAddEvent = () => {
+    if (!newEvent.title.trim() || !newEvent.date.trim()) {
+      setToast('Event title and date are required')
+      return
+    }
+
+    const event = {
+      title: newEvent.title.trim(),
+      date: newEvent.date.trim(),
+      description: newEvent.description.trim() || 'Event details will be updated soon.',
+      award: newEvent.award.trim() || 'Participation',
+    }
+
+    setCustomEvents((prev) => [event, ...prev])
+    setNewEvent({ title: '', date: '', description: '', award: '' })
+    setShowAddEventForm(false)
+    setToast('New event added to Memory Lane')
+  }
 
   const renderOverview = () => (
     <section className="grid gap-4 xl:grid-cols-4">
@@ -502,14 +634,147 @@ function App() {
     </section>
   )
 
-  const renderTeamVault = () => (
-    <section className="grid gap-3 md:grid-cols-3">
-      {vaultAssets.map((asset) => (
-        <article key={asset} className="rounded-2xl border border-white/10 bg-[#16161ab8] p-4 backdrop-blur-xl">
-          <p className="font-heading text-sm text-white">{asset}</p>
-          <p className="mt-2 text-xs text-zinc-400">Protected area. Access controlled.</p>
-        </article>
-      ))}
+  const renderMemoryLane = () => (
+    <section className="space-y-4">
+      <div className="mb-6 rounded-2xl border border-cyan-300/50 bg-gradient-to-br from-[#16161a] to-[#1a1a1f] p-6 backdrop-blur-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-heading text-2xl text-transparent bg-gradient-to-r from-cyan-300 via-violet-300 to-cyan-300 bg-clip-text">Memory Lane</h2>
+            <p className="mt-2 text-sm text-zinc-400">Hackathon Gallery - Celebrating Team Achievements & Events 📸</p>
+          </div>
+          <button
+            onClick={() => setShowAddEventForm((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-200"
+          >
+            <Plus className="h-4 w-4" /> Add Event
+          </button>
+        </div>
+
+        {showAddEventForm && (
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <input
+              value={newEvent.title}
+              onChange={(e) => setNewEvent((prev) => ({ ...prev, title: e.target.value }))}
+              placeholder="Event Name"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+            />
+            <input
+              value={newEvent.date}
+              onChange={(e) => setNewEvent((prev) => ({ ...prev, date: e.target.value }))}
+              placeholder="Date (e.g., Apr 2026)"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+            />
+            <input
+              value={newEvent.description}
+              onChange={(e) => setNewEvent((prev) => ({ ...prev, description: e.target.value }))}
+              placeholder="Description"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none md:col-span-2"
+            />
+            <input
+              value={newEvent.award}
+              onChange={(e) => setNewEvent((prev) => ({ ...prev, award: e.target.value }))}
+              placeholder="Achievement / Award"
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none md:col-span-2"
+            />
+            <button
+              onClick={handleAddEvent}
+              className="rounded-lg border border-emerald-300/40 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200 md:col-span-2"
+            >
+              Save Event
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-4">
+        {memoryLaneEvents.map((event, index) => {
+          const eventPhotos = getEventPhotos(event)
+          const photoEntries = eventPhotos
+            .map((photo, photoIndex) => ({
+              ...photo,
+              key: `${event.title}-photo-${photoIndex}`,
+              order: photoIndex,
+            }))
+            .filter((photo) => photo.src && !brokenMemoryImages[photo.key])
+
+          const galleryColsClass =
+            photoEntries.length <= 1
+              ? 'grid-cols-1'
+              : photoEntries.length === 2
+                ? 'grid-cols-1 md:grid-cols-2'
+                : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
+          
+          return (
+            <article key={event.title} className="rounded-2xl border border-violet-300/30 bg-[#16161ab8] p-5 backdrop-blur-xl overflow-hidden hover:border-violet-300/60 transition-all">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 className="font-heading text-lg text-white">{event.title}</h3>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor={`add-photo-${memberSlug(event.title)}-${index}`}
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-cyan-300/40 bg-black/70 text-cyan-200"
+                    title="Add Photo"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </label>
+                  <input
+                    id={`add-photo-${memberSlug(event.title)}-${index}`}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      handleAddMemoryPhoto(event.title, e.target.files?.[0])
+                      e.target.value = ''
+                    }}
+                  />
+                  <span className="rounded-full border border-violet-300/40 bg-violet-400/15 px-2 py-1 text-xs text-violet-200">{event.date}</span>
+                </div>
+              </div>
+
+              <p className="text-sm text-zinc-300 mb-3">{event.description}</p>
+
+              {photoEntries.length === 0 ? (
+                <div className="rounded-lg border border-white/10 bg-black/25 p-8 text-center text-sm text-zinc-500">
+                  No photos yet. Add one using +
+                </div>
+              ) : (
+                <div className={`grid gap-3 ${galleryColsClass}`}>
+                  {photoEntries.map((photo, photoIndex) => {
+                    const key = photo.key
+                    const photoMeta = { ...photo, index: photo.index }
+
+                    return (
+                      <div key={key} className="relative overflow-hidden rounded-lg border border-white/10 bg-black/25 aspect-[4/3]">
+                        {photo.src && !brokenMemoryImages[key] ? (
+                          <img
+                            src={photo.src}
+                            alt={`${event.title} photo ${photoIndex + 1}`}
+                            className="h-full w-full object-contain"
+                            onError={() => setBrokenMemoryImages((prev) => ({ ...prev, [key]: true }))}
+                          />
+                        ) : null}
+                        {photo.kind !== 'default' && (
+                          <button
+                            onClick={() => handleDeleteMemoryPhoto(event.title, photoMeta)}
+                            className="absolute left-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-300/40 bg-black/70 text-rose-200"
+                            title="Delete this photo"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className="mt-4 rounded-lg border border-white/10 bg-black/25 p-3">
+                <p className="text-xs text-zinc-400">Achievement</p>
+                <p className="mt-1 text-sm font-semibold text-yellow-200">{event.award}</p>
+              </div>
+            </article>
+          )
+        })}
+      </div>
     </section>
   )
 
@@ -519,7 +784,7 @@ function App() {
     Domains: renderDomains(),
     Projects: renderProjects(),
     'PS Points Wallet': renderPsPointsWallet(),
-    'Team Vault': renderTeamVault(),
+    'Memory Lane': renderMemoryLane(),
   }[activeTab]
 
   if (portfolioMember) {
