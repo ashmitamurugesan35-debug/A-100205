@@ -16,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { supabase, supabaseBucket } from './lib/supabaseClient'
 import { domainMatrix, hackathonVault, projects, teamMembers } from './teamData'
 
 const sidebarTabs = [
@@ -86,21 +87,31 @@ function compressImageFile(file, maxWidth = 1400, quality = 0.78) {
 
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          resolve(source)
+          resolve(file)
           return
         }
 
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
+        canvas.toBlob((blob) => {
+          resolve(blob || file)
+        }, 'image/jpeg', quality)
       }
 
-      img.onerror = () => resolve(source)
+      img.onerror = () => resolve(file)
       img.src = source
     }
 
     reader.onerror = () => reject(new Error('Unable to read image file'))
     reader.readAsDataURL(file)
   })
+}
+
+function isDataPhoto(src) {
+  return typeof src === 'string' && src.startsWith('data:image/')
+}
+
+function dataUrlToBlob(dataUrl) {
+  return fetch(dataUrl).then((response) => response.blob())
 }
 
 function App() {
@@ -131,6 +142,7 @@ function App() {
     description: '',
     award: '',
   })
+  const [migrationStatus, setMigrationStatus] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft(getTimeLeft()), 1000)
@@ -153,6 +165,97 @@ function App() {
       setToast('Unable to save new events in browser storage')
     }
   }, [customEvents])
+
+  useEffect(() => {
+    const migrateOldMemoryPhotos = async () => {
+      if (!supabase) {
+        return
+      }
+
+      if (localStorage.getItem('memoryLaneMigrationDone') === 'true') {
+        return
+      }
+
+      const storedMemories = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('uploadedMemories')) || {}
+        } catch {
+          return {}
+        }
+      })()
+
+      let changed = false
+      const migratedMemories = { ...storedMemories }
+
+      for (const [eventTitle, memory] of Object.entries(storedMemories)) {
+        const nextMemory = { ...memory }
+        const nextPhotos = []
+
+        const legacyPhotoSources = [memory?.teamPhoto, memory?.teamPhoto2].filter(isDataPhoto)
+        const arrayPhotos = Array.isArray(memory?.photos) ? memory.photos : []
+
+        const normalizedPhotos = []
+        for (const entry of arrayPhotos) {
+          if (typeof entry === 'string') {
+            normalizedPhotos.push({ src: entry, storagePath: null })
+          } else if (entry && typeof entry === 'object' && entry.src) {
+            normalizedPhotos.push({ src: entry.src, storagePath: entry.storagePath || null })
+          }
+        }
+
+        const combined = [
+          ...legacyPhotoSources.map((src) => ({ src, storagePath: null })),
+          ...normalizedPhotos,
+        ]
+
+        for (const photo of combined) {
+          if (!isDataPhoto(photo.src)) {
+            nextPhotos.push(photo)
+            continue
+          }
+
+          try {
+            const blob = await dataUrlToBlob(photo.src)
+            const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+            const storagePath = `${memberSlug(eventTitle)}/${fileName}`
+
+            const { error: uploadError } = await supabase.storage.from(supabaseBucket).upload(storagePath, blob, {
+              contentType: 'image/jpeg',
+              upsert: false,
+            })
+
+            if (uploadError) {
+              nextPhotos.push(photo)
+              continue
+            }
+
+            const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(storagePath)
+            nextPhotos.push({ src: data.publicUrl, storagePath })
+            changed = true
+          } catch {
+            nextPhotos.push(photo)
+          }
+        }
+
+        delete nextMemory.teamPhoto
+        delete nextMemory.teamPhoto2
+        nextMemory.photos = nextPhotos
+        migratedMemories[eventTitle] = nextMemory
+      }
+
+      if (changed) {
+        localStorage.setItem('uploadedMemories', JSON.stringify(migratedMemories))
+        localStorage.setItem('memoryLaneMigrationDone', 'true')
+        setUploadedMemories(migratedMemories)
+        setMigrationStatus('Old photos migrated to Supabase')
+        setToast('Old photos migrated to Supabase')
+      } else {
+        localStorage.setItem('memoryLaneMigrationDone', 'true')
+      }
+    }
+
+    migrateOldMemoryPhotos()
+  }, [])
 
   const walletProfiles = useMemo(() => teamMembers.filter((member) => member.psWallet), [])
 
@@ -312,13 +415,44 @@ function App() {
     if (!file) return
 
     try {
-      const base64 = await compressImageFile(file)
+      const processedFile = await compressImageFile(file)
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const storagePath = `${memberSlug(eventTitle)}/${fileName}`
+
+      let src = null
+      let uploadedPhoto = null
+
+      if (supabase) {
+        const { error: uploadError } = await supabase.storage
+          .from(supabaseBucket)
+          .upload(storagePath, processedFile, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw uploadError
+        }
+
+        const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(storagePath)
+        src = data.publicUrl
+        uploadedPhoto = { src, storagePath }
+      } else {
+        const reader = new FileReader()
+        src = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(new Error('Unable to read image file'))
+          reader.readAsDataURL(processedFile)
+        })
+        uploadedPhoto = { src, storagePath: null }
+      }
+
       const existingPhotos = uploadedMemories[eventTitle]?.photos || []
       const updated = {
         ...uploadedMemories,
         [eventTitle]: {
           ...uploadedMemories[eventTitle],
-          photos: [...existingPhotos, base64],
+          photos: [...existingPhotos, uploadedPhoto],
         },
       }
 
@@ -346,9 +480,10 @@ function App() {
       .filter(Boolean)
       .map((src, index) => ({ src, kind: 'legacy', index }))
 
-    const uploadedPhotos = (eventMemory.photos || []).map((src, index) => ({
-      src,
+    const uploadedPhotos = (eventMemory.photos || []).map((photo, index) => ({
+      src: typeof photo === 'string' ? photo : photo?.src,
       kind: 'uploaded',
+      storagePath: typeof photo === 'string' ? null : photo?.storagePath || null,
       index,
     }))
 
@@ -363,6 +498,10 @@ function App() {
       const photos = [...(updatedEvent.photos || [])]
       photos.splice(photoMeta.index, 1)
       updatedEvent.photos = photos
+
+      if (supabase && photoMeta.storagePath) {
+        supabase.storage.from(supabaseBucket).remove([photoMeta.storagePath]).catch(() => null)
+      }
     }
 
     if (photoMeta.kind === 'legacy') {
@@ -675,6 +814,7 @@ function App() {
           <div>
             <h2 className="font-heading text-2xl text-transparent bg-gradient-to-r from-cyan-300 via-violet-300 to-cyan-300 bg-clip-text">Memory Lane</h2>
             <p className="mt-2 text-sm text-zinc-400">Hackathon Gallery - Celebrating Team Achievements & Events 📸</p>
+            {migrationStatus && <p className="mt-2 text-xs text-emerald-300">{migrationStatus}</p>}
           </div>
           <button
             onClick={() => setShowAddEventForm((prev) => !prev)}
