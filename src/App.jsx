@@ -9,6 +9,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   Link2,
+  PencilLine,
   Plus,
   ShieldAlert,
   Timer,
@@ -135,6 +136,13 @@ function App() {
       return []
     }
   })
+  const [achievementEdits, setAchievementEdits] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('memoryLaneAchievementEdits')) || {}
+    } catch {
+      return {}
+    }
+  })
   const [showAddEventForm, setShowAddEventForm] = useState(false)
   const [newEvent, setNewEvent] = useState({
     title: '',
@@ -143,6 +151,8 @@ function App() {
     award: '',
   })
   const [migrationStatus, setMigrationStatus] = useState('')
+  const [editingAchievementTitle, setEditingAchievementTitle] = useState('')
+  const [editingAchievementValue, setEditingAchievementValue] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft(getTimeLeft()), 1000)
@@ -165,6 +175,14 @@ function App() {
       setToast('Unable to save new events in browser storage')
     }
   }, [customEvents])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('memoryLaneAchievementEdits', JSON.stringify(achievementEdits))
+    } catch {
+      setToast('Unable to save achievement edits in browser storage')
+    }
+  }, [achievementEdits])
 
   useEffect(() => {
     const migrateOldMemoryPhotos = async () => {
@@ -548,6 +566,34 @@ function App() {
     setToast('New event added to Memory Lane')
   }
 
+  const getEventAward = (event) => achievementEdits[event.title] ?? event.award
+
+  const startEditingAchievement = (event) => {
+    setEditingAchievementTitle(event.title)
+    setEditingAchievementValue(getEventAward(event))
+  }
+
+  const saveAchievementEdit = (eventTitle) => {
+    const nextValue = editingAchievementValue.trim()
+    if (!nextValue) {
+      setToast('Achievement cannot be empty')
+      return
+    }
+
+    setAchievementEdits((prev) => ({
+      ...prev,
+      [eventTitle]: nextValue,
+    }))
+    setEditingAchievementTitle('')
+    setEditingAchievementValue('')
+    setToast('Achievement updated')
+  }
+
+  const cancelAchievementEdit = () => {
+    setEditingAchievementTitle('')
+    setEditingAchievementValue('')
+  }
+
   const renderOverview = () => (
     <section className="grid gap-4 xl:grid-cols-4">
       <article className="rounded-2xl border border-white/10 bg-[#16161ab8] p-5 backdrop-blur-xl xl:col-span-3">
@@ -863,6 +909,7 @@ function App() {
       <div className="grid gap-4">
         {memoryLaneEvents.map((event, index) => {
           const eventPhotos = getEventPhotos(event)
+          const eventAward = getEventAward(event)
           const photoEntries = eventPhotos
             .map((photo, photoIndex) => ({
               ...photo,
@@ -942,8 +989,42 @@ function App() {
               )}
 
               <div className="mt-4 rounded-lg border border-white/10 bg-black/25 p-3">
-                <p className="text-xs text-zinc-400">Achievement</p>
-                <p className="mt-1 text-sm font-semibold text-yellow-200">{event.award}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-zinc-400">Achievement</p>
+                  <button
+                    onClick={() => startEditingAchievement(event)}
+                    className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-200"
+                  >
+                    <PencilLine className="h-3 w-3" /> Edit
+                  </button>
+                </div>
+
+                {editingAchievementTitle === event.title ? (
+                  <div className="mt-2 space-y-2">
+                    <input
+                      value={editingAchievementValue}
+                      onChange={(e) => setEditingAchievementValue(e.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                      placeholder="Edit achievement"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => saveAchievementEdit(event.title)}
+                        className="rounded-lg border border-emerald-300/40 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-200"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelAchievementEdit}
+                        className="rounded-lg border border-white/10 bg-black/25 px-3 py-1.5 text-xs text-zinc-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm font-semibold text-yellow-200">{eventAward}</p>
+                )}
               </div>
             </article>
           )
