@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import {
   Activity,
@@ -9,7 +9,6 @@ import {
   FolderKanban,
   LayoutDashboard,
   Link2,
-  PencilLine,
   Plus,
   ShieldAlert,
   Timer,
@@ -17,7 +16,6 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { supabase, supabaseBucket, supabaseAchievementsTable } from './lib/supabaseClient'
 import { domainMatrix, hackathonVault, projects, teamMembers } from './teamData'
 
 const sidebarTabs = [
@@ -72,49 +70,6 @@ function truncateText(text, maxLen) {
   return `${text.slice(0, maxLen - 3)}...`
 }
 
-function compressImageFile(file, maxWidth = 1400, quality = 0.78) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = () => {
-      const source = reader.result
-      const img = new Image()
-
-      img.onload = () => {
-        const scale = Math.min(1, maxWidth / img.width)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.max(1, Math.round(img.width * scale))
-        canvas.height = Math.max(1, Math.round(img.height * scale))
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          resolve(file)
-          return
-        }
-
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        canvas.toBlob((blob) => {
-          resolve(blob || file)
-        }, 'image/jpeg', quality)
-      }
-
-      img.onerror = () => resolve(file)
-      img.src = source
-    }
-
-    reader.onerror = () => reject(new Error('Unable to read image file'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function isDataPhoto(src) {
-  return typeof src === 'string' && src.startsWith('data:image/')
-}
-
-function dataUrlToBlob(dataUrl) {
-  return fetch(dataUrl).then((response) => response.blob())
-}
-
 function App() {
   const [activeTab, setActiveTab] = useState('Overview')
   const [timeLeft, setTimeLeft] = useState(getTimeLeft)
@@ -136,13 +91,6 @@ function App() {
       return []
     }
   })
-  const [achievementEdits, setAchievementEdits] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('memoryLaneAchievementEdits')) || {}
-    } catch {
-      return {}
-    }
-  })
   const [showAddEventForm, setShowAddEventForm] = useState(false)
   const [newEvent, setNewEvent] = useState({
     title: '',
@@ -150,9 +98,6 @@ function App() {
     description: '',
     award: '',
   })
-  const [migrationStatus, setMigrationStatus] = useState('')
-  const [editingAchievementTitle, setEditingAchievementTitle] = useState('')
-  const [editingAchievementValue, setEditingAchievementValue] = useState('')
 
   useEffect(() => {
     const timer = setInterval(() => setTimeLeft(getTimeLeft()), 1000)
@@ -175,133 +120,6 @@ function App() {
       setToast('Unable to save new events in browser storage')
     }
   }, [customEvents])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('memoryLaneAchievementEdits', JSON.stringify(achievementEdits))
-    } catch {
-      setToast('Unable to save achievement edits in browser storage')
-    }
-  }, [achievementEdits])
-
-  useEffect(() => {
-    const loadAchievementEdits = async () => {
-      if (!supabase) {
-        return
-      }
-
-      const { data, error } = await supabase
-        .from(supabaseAchievementsTable)
-        .select('event_title, award')
-
-      if (error || !Array.isArray(data) || data.length === 0) {
-        return
-      }
-
-      const nextEdits = data.reduce((accumulator, row) => {
-        if (row?.event_title && row?.award) {
-          accumulator[row.event_title] = row.award
-        }
-        return accumulator
-      }, {})
-
-      setAchievementEdits((prev) => ({ ...prev, ...nextEdits }))
-      setToast('Loaded achievement edits from Supabase')
-    }
-
-    loadAchievementEdits()
-  }, [])
-
-  useEffect(() => {
-    const migrateOldMemoryPhotos = async () => {
-      if (!supabase) {
-        return
-      }
-
-      if (localStorage.getItem('memoryLaneMigrationDone') === 'true') {
-        return
-      }
-
-      const storedMemories = (() => {
-        try {
-          return JSON.parse(localStorage.getItem('uploadedMemories')) || {}
-        } catch {
-          return {}
-        }
-      })()
-
-      let changed = false
-      const migratedMemories = { ...storedMemories }
-
-      for (const [eventTitle, memory] of Object.entries(storedMemories)) {
-        const nextMemory = { ...memory }
-        const nextPhotos = []
-
-        const legacyPhotoSources = [memory?.teamPhoto, memory?.teamPhoto2].filter(isDataPhoto)
-        const arrayPhotos = Array.isArray(memory?.photos) ? memory.photos : []
-
-        const normalizedPhotos = []
-        for (const entry of arrayPhotos) {
-          if (typeof entry === 'string') {
-            normalizedPhotos.push({ src: entry, storagePath: null })
-          } else if (entry && typeof entry === 'object' && entry.src) {
-            normalizedPhotos.push({ src: entry.src, storagePath: entry.storagePath || null })
-          }
-        }
-
-        const combined = [
-          ...legacyPhotoSources.map((src) => ({ src, storagePath: null })),
-          ...normalizedPhotos,
-        ]
-
-        for (const photo of combined) {
-          if (!isDataPhoto(photo.src)) {
-            nextPhotos.push(photo)
-            continue
-          }
-
-          try {
-            const blob = await dataUrlToBlob(photo.src)
-            const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-            const storagePath = `${memberSlug(eventTitle)}/${fileName}`
-
-            const { error: uploadError } = await supabase.storage.from(supabaseBucket).upload(storagePath, blob, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            })
-
-            if (uploadError) {
-              nextPhotos.push(photo)
-              continue
-            }
-
-            const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(storagePath)
-            nextPhotos.push({ src: data.publicUrl, storagePath })
-            changed = true
-          } catch {
-            nextPhotos.push(photo)
-          }
-        }
-
-        delete nextMemory.teamPhoto
-        delete nextMemory.teamPhoto2
-        nextMemory.photos = nextPhotos
-        migratedMemories[eventTitle] = nextMemory
-      }
-
-      if (changed) {
-        localStorage.setItem('uploadedMemories', JSON.stringify(migratedMemories))
-        localStorage.setItem('memoryLaneMigrationDone', 'true')
-        setUploadedMemories(migratedMemories)
-        setMigrationStatus('Old photos migrated to Supabase')
-        setToast('Old photos migrated to Supabase')
-      } else {
-        localStorage.setItem('memoryLaneMigrationDone', 'true')
-      }
-    }
-
-    migrateOldMemoryPhotos()
-  }, [])
 
   const walletProfiles = useMemo(() => teamMembers.filter((member) => member.psWallet), [])
 
@@ -457,48 +275,18 @@ function App() {
     </div>
   )
 
-  const handleAddMemoryPhoto = async (eventTitle, file) => {
+  const handleAddMemoryPhoto = (eventTitle, file) => {
     if (!file) return
 
-    try {
-      const processedFile = await compressImageFile(file)
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-      const storagePath = `${memberSlug(eventTitle)}/${fileName}`
-
-      let src = null
-      let uploadedPhoto = null
-
-      if (supabase) {
-        const { error: uploadError } = await supabase.storage
-          .from(supabaseBucket)
-          .upload(storagePath, processedFile, {
-            contentType: 'image/jpeg',
-            upsert: false,
-          })
-
-        if (uploadError) {
-          throw uploadError
-        }
-
-        const { data } = supabase.storage.from(supabaseBucket).getPublicUrl(storagePath)
-        src = data.publicUrl
-        uploadedPhoto = { src, storagePath }
-      } else {
-        const reader = new FileReader()
-        src = await new Promise((resolve, reject) => {
-          reader.onload = () => resolve(reader.result)
-          reader.onerror = () => reject(new Error('Unable to read image file'))
-          reader.readAsDataURL(processedFile)
-        })
-        uploadedPhoto = { src, storagePath: null }
-      }
-
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const base64 = e.target.result
       const existingPhotos = uploadedMemories[eventTitle]?.photos || []
       const updated = {
         ...uploadedMemories,
         [eventTitle]: {
           ...uploadedMemories[eventTitle],
-          photos: [...existingPhotos, uploadedPhoto],
+          photos: [...existingPhotos, base64],
         },
       }
 
@@ -506,13 +294,11 @@ function App() {
       try {
         localStorage.setItem('uploadedMemories', JSON.stringify(updated))
       } catch {
-        setToast('Photo shown now, but storage full. Use smaller image or clear old photos.')
-        return
+        setToast('Photo added for this session, but browser storage is full')
       }
-      setToast(`✅ Photo added for ${eventTitle}`)
-    } catch {
-      setToast('Unable to process image. Try another file.')
+      setToast(`Ô£à Photo added for ${eventTitle}`)
     }
+    reader.readAsDataURL(file)
   }
 
   const getEventPhotos = (event) => {
@@ -526,10 +312,9 @@ function App() {
       .filter(Boolean)
       .map((src, index) => ({ src, kind: 'legacy', index }))
 
-    const uploadedPhotos = (eventMemory.photos || []).map((photo, index) => ({
-      src: typeof photo === 'string' ? photo : photo?.src,
+    const uploadedPhotos = (eventMemory.photos || []).map((src, index) => ({
+      src,
       kind: 'uploaded',
-      storagePath: typeof photo === 'string' ? null : photo?.storagePath || null,
       index,
     }))
 
@@ -544,10 +329,6 @@ function App() {
       const photos = [...(updatedEvent.photos || [])]
       photos.splice(photoMeta.index, 1)
       updatedEvent.photos = photos
-
-      if (supabase && photoMeta.storagePath) {
-        supabase.storage.from(supabaseBucket).remove([photoMeta.storagePath]).catch(() => null)
-      }
     }
 
     if (photoMeta.kind === 'legacy') {
@@ -592,57 +373,6 @@ function App() {
     setNewEvent({ title: '', date: '', description: '', award: '' })
     setShowAddEventForm(false)
     setToast('New event added to Memory Lane')
-  }
-
-  const getEventAward = (event) => achievementEdits[event.title] ?? event.award
-
-  const startEditingAchievement = (event) => {
-    setEditingAchievementTitle(event.title)
-    setEditingAchievementValue(getEventAward(event))
-  }
-
-  const saveAchievementEdit = (eventTitle) => {
-    const nextValue = editingAchievementValue.trim()
-    if (!nextValue) {
-      setToast('Achievement cannot be empty')
-      return
-    }
-
-    setAchievementEdits((prev) => ({
-      ...prev,
-      [eventTitle]: nextValue,
-    }))
-
-    if (supabase) {
-      supabase
-        .from(supabaseAchievementsTable)
-        .upsert(
-          {
-            event_title: eventTitle,
-            award: nextValue,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'event_title' },
-        )
-        .then(({ error }) => {
-          if (error) {
-            setToast('Saved locally, but Supabase update failed')
-            return
-          }
-
-          setToast('Achievement updated in backend')
-        })
-    } else {
-      setToast('Achievement updated locally')
-    }
-
-    setEditingAchievementTitle('')
-    setEditingAchievementValue('')
-  }
-
-  const cancelAchievementEdit = () => {
-    setEditingAchievementTitle('')
-    setEditingAchievementValue('')
   }
 
   const renderOverview = () => (
@@ -910,8 +640,7 @@ function App() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-heading text-2xl text-transparent bg-gradient-to-r from-cyan-300 via-violet-300 to-cyan-300 bg-clip-text">Memory Lane</h2>
-            <p className="mt-2 text-sm text-zinc-400">Hackathon Gallery - Celebrating Team Achievements & Events 📸</p>
-            {migrationStatus && <p className="mt-2 text-xs text-emerald-300">{migrationStatus}</p>}
+            <p className="mt-2 text-sm text-zinc-400">Hackathon Gallery - Celebrating Team Achievements & Events ­ƒô©</p>
           </div>
           <button
             onClick={() => setShowAddEventForm((prev) => !prev)}
@@ -960,7 +689,6 @@ function App() {
       <div className="grid gap-4">
         {memoryLaneEvents.map((event, index) => {
           const eventPhotos = getEventPhotos(event)
-          const eventAward = getEventAward(event)
           const photoEntries = eventPhotos
             .map((photo, photoIndex) => ({
               ...photo,
@@ -1040,42 +768,8 @@ function App() {
               )}
 
               <div className="mt-4 rounded-lg border border-white/10 bg-black/25 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-zinc-400">Achievement</p>
-                  <button
-                    onClick={() => startEditingAchievement(event)}
-                    className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-200"
-                  >
-                    <PencilLine className="h-3 w-3" /> Edit
-                  </button>
-                </div>
-
-                {editingAchievementTitle === event.title ? (
-                  <div className="mt-2 space-y-2">
-                    <input
-                      value={editingAchievementValue}
-                      onChange={(e) => setEditingAchievementValue(e.target.value)}
-                      className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
-                      placeholder="Edit achievement"
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => saveAchievementEdit(event.title)}
-                        className="rounded-lg border border-emerald-300/40 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-200"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={cancelAchievementEdit}
-                        className="rounded-lg border border-white/10 bg-black/25 px-3 py-1.5 text-xs text-zinc-200"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="mt-1 text-sm font-semibold text-yellow-200">{eventAward}</p>
-                )}
+                <p className="text-xs text-zinc-400">Achievement</p>
+                <p className="mt-1 text-sm font-semibold text-yellow-200">{event.award}</p>
               </div>
             </article>
           )
