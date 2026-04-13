@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
+import net from 'node:net'
 
 dotenv.config()
 
@@ -18,6 +19,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+async function getAvailablePort(startPort) {
+  const tryPort = (port) =>
+    new Promise((resolve) => {
+      const tester = net.createServer()
+      tester.unref()
+
+      tester.on('error', () => {
+        resolve(tryPort(port + 1))
+      })
+
+      tester.listen(port, () => {
+        tester.close(() => resolve(port))
+      })
+    })
+
+  return tryPort(startPort)
+}
 
 app.use(cors())
 app.use(express.json())
@@ -134,6 +153,15 @@ app.post('/api/memories', async (req, res) => {
   }
 })
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`)
+const startServer = async () => {
+  const availablePort = await getAvailablePort(Number(PORT) || 5000)
+
+  app.listen(availablePort, () => {
+    console.log(`Backend running on http://localhost:${availablePort}`)
+  })
+}
+
+startServer().catch((error) => {
+  console.error('Failed to start backend:', error)
+  process.exit(1)
 })
